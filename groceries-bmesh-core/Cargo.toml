@@ -1,0 +1,29 @@
+[package]
+name = "groceries-bmesh-core"
+version = "0.1.0"
+edition = "2024"
+repository = "https://github.com/AntoniosBarotsis/groceries-bmesh-core"
+license = "GPL-3.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# TODO: Change this once they merge my pr
+iroh-ble-transport = { git = "https://github.com/AntoniosBarotsis/iroh-ble-transport/", branch ="feat/iroh-v1" }
+tauri-plugin-blew = "0.3.1"
+anyhow = "1.0.104"
+tokio = { version = "1.53.1", default-features = false, features = ["sync", "macros", "rt", "time"] }
+iroh = { version = "1.0.3", default-features = false, features = ["unstable-custom-transports"] }
+iroh-gossip = "0.101.0"
+rand = "0.10.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+data-encoding = "2.11.0"
+futures-lite = "2.6.1"
+sha2 = "0.11.0"
+n0-future = "0.3.2"
+iroh-mdns-address-lookup = "0.4.0"
+iroh-topic-tracker = "0.2.0"
+crdts = "7.3.2"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
