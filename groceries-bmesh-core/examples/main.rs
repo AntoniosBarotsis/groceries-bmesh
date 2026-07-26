@@ -48,15 +48,14 @@ async fn main() -> anyhow::Result<()> {
   //   // state_clone.write().await.remove("hello".to_owned()).await;
   // });
 
-  // let state_clone = state.clone();
-  // tokio::spawn(async move {
-  //   loop {
-  //     tokio::time::sleep(Duration::from_secs(10)).await;
-  //     let map = &state_clone.read().await.map;
-  //     let values = map.get(&"hello".to_string()).val.map(|el| el.read().val);
-  //     info!("PRINTING VALUES {:?}", values);
-  //   }
-  // });
+  let state_clone = state.clone();
+  tokio::spawn(async move {
+    loop {
+      tokio::time::sleep(Duration::from_secs(10)).await;
+      let map = state_clone.read().await.to_hashmap();
+      info!("PRINTING VALUES {:?}", map);
+    }
+  });
 
   let state_clone = state.clone();
   let _respond = start_respond_loop(receiver, state_clone);
