@@ -50,6 +50,7 @@ impl PeerState {
   }
 
   async fn broadcast(&self, msg: CoreMessage) {
+    // FIXME: Apparently this can fail after I ctrl-c because the receiver gets deallocated. Not sure I care though.
     self
       .sender
       .broadcast(
