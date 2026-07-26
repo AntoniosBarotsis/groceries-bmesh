@@ -91,6 +91,9 @@ impl PeerState {
           self.map.apply(op);
         }
       }
+      // TODO: I never send this. I could probably remove it, the only concern is that its faster than AntiEntropyResponse.
+      // Maybe I can check if the heartbeat is really far back and in that case not respond with AntiEntropyResponse and
+      // have the other node notice that and send a SnapshotRequest?
       CoreMessage::SnapshotRequest => {
         let state = self.map.clone();
         let clock = self.map.read_ctx().add_clock;
