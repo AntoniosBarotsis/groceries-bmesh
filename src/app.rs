@@ -1,3 +1,6 @@
+use std::{collections::HashMap, time::Duration};
+
+use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::{ev::SubmitEvent, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -9,14 +12,26 @@ extern "C" {
     async fn invoke(cmd: &str, args: JsValue) -> JsValue;
 }
 
-#[derive(Serialize, Deserialize)]
-struct GreetArgs<'a> {
-    name: &'a str,
+#[derive(Debug, Serialize, Deserialize)]
+struct InsertArgs {
+    key: String,
+    value: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct GetArgs {
+    key: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RemoveArgs {
+    key: String,
 }
 
 #[component]
 pub fn App() -> impl IntoView {
     let (name, set_name) = signal(String::new());
+    let (dict, set_dict) = signal(String::new());
     let (greet_msg, set_greet_msg) = signal(String::new());
 
     let update_name = move |ev| {
@@ -32,10 +47,12 @@ pub fn App() -> impl IntoView {
                 return;
             }
 
-            let args = serde_wasm_bindgen::to_value(&GreetArgs { name: &name }).unwrap();
-            // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-            let new_msg = invoke("greet", args).await.as_string().unwrap();
-            set_greet_msg.set(new_msg);
+            let args = serde_wasm_bindgen::to_value(&InsertArgs {
+                key: "hello".to_owned(),
+                value: name,
+            })
+            .unwrap();
+            let _ = invoke("insert", args).await;
         });
     };
 
