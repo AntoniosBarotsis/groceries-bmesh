@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
 use groceries_bmesh_core::{crdt::PeerState, setup, start_heartbeat_loop, start_respond_loop};
@@ -19,8 +19,7 @@ async fn main() -> anyhow::Result<()> {
 
   let state = Arc::new(RwLock::new(PeerState::new(actor, sender.clone())));
 
-  let state_clone = state.clone();
-  let _heartbeat = start_heartbeat_loop(state_clone);
+  let _heartbeat = start_heartbeat_loop(state.clone());
 
   // Simulated action sequence
   // let state_clone = state.clone();
