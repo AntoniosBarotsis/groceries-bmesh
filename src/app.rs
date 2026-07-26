@@ -16,7 +16,7 @@ extern "C" {
 #[derive(Debug, Serialize, Deserialize)]
 struct InsertArgs {
     key: String,
-    value: String,
+    value: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -59,11 +59,11 @@ pub fn App() -> impl IntoView {
             }
 
             let args = serde_wasm_bindgen::to_value(&InsertArgs {
-                key: "hello".to_owned(),
-                value: name,
+                key: name,
+                value: false,
             })
             .unwrap();
-            let _ = invoke("insert", args).await;
+            let _ = invoke("update", args).await;
             let msg = invoke("to_hashmap", JsValue::null()).await;
             let msg = serde_wasm_bindgen::from_value::<HashMap<String, String>>(msg).unwrap();
             set_dict.set(format!("{msg:?}"))

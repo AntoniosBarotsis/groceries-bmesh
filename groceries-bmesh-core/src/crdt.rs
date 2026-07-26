@@ -6,7 +6,7 @@ use iroh_gossip::api::GossipSender;
 use serde::{Deserialize, Serialize};
 
 pub type Actor = PublicKey;
-pub type Grocery = MVReg<String, Actor>;
+pub type Grocery = MVReg<bool, Actor>;
 pub type Groceries = Map<String, Grocery, Actor>;
 pub type Clock = VClock<Actor>;
 
@@ -114,16 +114,9 @@ impl PeerState {
     self.map.get(&key.to_owned()).val
   }
 
-  pub async fn insert(&mut self, key: String, value: String) {
+  pub async fn update(&mut self, key: String, value: bool) {
     let ctx = self.map.read_ctx().derive_add_ctx(self.actor);
     let op = self.map.update(key, ctx, |v, ctx| v.write(value, ctx));
-
-    self.apply_local_op(op).await;
-  }
-
-  pub async fn update(&mut self, key: String, f: impl FnOnce(&Grocery) -> String) {
-    let ctx = self.map.read_ctx().derive_add_ctx(self.actor);
-    let op = self.map.update(key, ctx, |v, ctx| v.write(f(v), ctx));
 
     self.apply_local_op(op).await;
   }
@@ -150,10 +143,11 @@ impl PeerState {
     for item_ctx in self.map.iter() {
       let (key, value) = item_ctx.val;
       let value_ctx = value.read();
-      // TODO: Make sure this is fine
-      let value_string = value_ctx.val.iter().min().unwrap();
 
-      hash_map.insert(key.to_owned(), value_string.to_owned());
+      // TODO: Make sure this is fine
+      let value_string = value_ctx.val.iter().any(|el| *el).to_string();
+
+      hash_map.insert(key.to_owned(), value_string);
     }
     hash_map
   }

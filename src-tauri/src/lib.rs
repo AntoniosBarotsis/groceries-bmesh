@@ -11,13 +11,13 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn insert(
+async fn update(
     state: State<'_, Arc<RwLock<PeerState>>>,
     key: String,
-    value: String,
+    value: bool,
 ) -> Result<(), ()> {
     let mut guard = state.write().await;
-    guard.insert(key, value).await;
+    guard.update(key, value).await;
 
     Ok(())
 }
@@ -69,7 +69,7 @@ pub async fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
-            greet, insert, get, remove, to_hashmap
+            greet, get, update, remove, to_hashmap
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
