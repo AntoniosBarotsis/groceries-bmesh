@@ -65,7 +65,7 @@ pub fn App() -> impl IntoView {
             .unwrap();
             let _ = invoke("update", args).await;
             let msg = invoke("to_hashmap", JsValue::null()).await;
-            let msg = serde_wasm_bindgen::from_value::<HashMap<String, String>>(msg).unwrap();
+            let msg = serde_wasm_bindgen::from_value::<HashMap<String, bool>>(msg).unwrap();
             set_dict.set(format!("{msg:?}"))
 
             // let args = serde_wasm_bindgen::to_value(&GreetArgs { name: &name }).unwrap();
