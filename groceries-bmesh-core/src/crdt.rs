@@ -144,6 +144,19 @@ impl PeerState {
     let msg = CoreMessage::Op(op);
     self.broadcast(msg).await;
   }
+
+  pub fn to_hashmap(&self) -> HashMap<String, String> {
+    let mut hash_map: HashMap<String, String> = HashMap::new();
+    for item_ctx in self.map.iter() {
+      let (key, value) = item_ctx.val;
+      let value_ctx = value.read();
+      // TODO: Make sure this is fine
+      let value_string = value_ctx.val.iter().min().unwrap();
+
+      hash_map.insert(key.to_owned(), value_string.to_owned());
+    }
+    hash_map
+  }
 }
 
 impl OpLog {
