@@ -1,14 +1,11 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use groceries_bmesh_core::{
-  crdt::{NetMessage, PeerState},
-  setup, start_heartbeat_loop, start_respond_loop,
-};
+use groceries_bmesh_core::{crdt::PeerState, setup, start_heartbeat_loop, start_respond_loop};
 pub use iroh_gossip::api::Event;
 pub use n0_future::StreamExt;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -17,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
   // TODO: This is for testing, change it later
   let id = std::env::var("ID").expect("ID not passed");
   let id = id.parse::<u8>().expect("Could not parse id");
-  let (actor, sender, mut receiver, router, _discovery_handle) = setup(id).await?;
+  let (actor, sender, receiver, router, _discovery_handle) = setup(id).await?;
   info!("Joined");
 
   let state = Arc::new(RwLock::new(PeerState::new(actor, sender.clone())));

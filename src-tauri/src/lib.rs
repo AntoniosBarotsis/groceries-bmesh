@@ -22,10 +22,8 @@ pub async fn run() {
         sender.clone(),
     )));
 
-    let state_clone = state.clone();
-    let _heartbeat = groceries_bmesh_core::start_heartbeat_loop(state_clone);
-    let state_clone = state.clone();
-    let _respond = groceries_bmesh_core::start_respond_loop(receiver, state_clone);
+    let _heartbeat = groceries_bmesh_core::start_heartbeat_loop(state.clone());
+    let _respond = groceries_bmesh_core::start_respond_loop(receiver, state.clone());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
