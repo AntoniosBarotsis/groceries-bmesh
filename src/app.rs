@@ -1,5 +1,6 @@
 use std::{collections::HashMap, time::Duration};
 
+use futures_timer::Delay;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::{ev::SubmitEvent, prelude::*};
@@ -39,6 +40,16 @@ pub fn App() -> impl IntoView {
         set_name.set(v);
     };
 
+    spawn_local(async move {
+        loop {
+            let msg = invoke("to_hashmap", JsValue::null()).await;
+            let msg = serde_wasm_bindgen::from_value::<HashMap<String, String>>(msg).unwrap();
+            set_dict.set(format!("{msg:?}"));
+            dbg!("yo");
+            Delay::new(Duration::from_secs(1)).await;
+        }
+    });
+
     let greet = move |ev: SubmitEvent| {
         ev.prevent_default();
         spawn_local(async move {
@@ -53,6 +64,14 @@ pub fn App() -> impl IntoView {
             })
             .unwrap();
             let _ = invoke("insert", args).await;
+            let msg = invoke("to_hashmap", JsValue::null()).await;
+            let msg = serde_wasm_bindgen::from_value::<HashMap<String, String>>(msg).unwrap();
+            set_dict.set(format!("{msg:?}"))
+
+            // let args = serde_wasm_bindgen::to_value(&GreetArgs { name: &name }).unwrap();
+            // // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+            // let new_msg = invoke("greet", args).await.as_string().unwrap();
+            // set_greet_msg.set(new_msg);
         });
     };
 
@@ -74,6 +93,7 @@ pub fn App() -> impl IntoView {
                 <input id="greet-input" placeholder="Enter a name..." on:input=update_name />
                 <button type="submit">"Greet"</button>
             </form>
+            <p>{dict}</p>
             <p>{move || greet_msg.get()}</p>
         </main>
     }
