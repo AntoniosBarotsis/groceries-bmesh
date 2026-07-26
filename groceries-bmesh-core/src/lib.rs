@@ -11,14 +11,15 @@ use iroh::{
 };
 use iroh_gossip::{
   Gossip,
-  api::{GossipReceiver, GossipSender},
+  api::{Event, GossipReceiver, GossipSender},
 };
-use iroh_topic_tracker::{TopicDiscoveryConfig, TopicDiscoveryExt, TopicDiscoveryHandle};
+pub use iroh_topic_tracker::{TopicDiscoveryConfig, TopicDiscoveryExt, TopicDiscoveryHandle};
+pub use n0_future::StreamExt;
 use sha2::{Digest, Sha256};
 use tokio::{sync::RwLock, task::JoinHandle};
-use tracing::info;
+use tracing::{debug, info};
 
-use crate::crdt::{Actor, PeerState};
+use crate::crdt::{Actor, NetMessage, PeerState};
 
 // pub fn get_key() -> anyhow::Result<SecretKey> {
 //   let key_path = PathBuf::from("my_peer_key.bin");
@@ -44,6 +45,31 @@ pub fn start_heartbeat_loop(state: Arc<RwLock<PeerState>>) -> JoinHandle<()> {
       // debug!("SENDING HEARTBEAT");
       state.read().await.send_heartbeat().await;
       tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+  })
+}
+
+pub fn start_respond_loop(
+  mut receiver: GossipReceiver,
+  state: Arc<RwLock<PeerState>>,
+) -> JoinHandle<()> {
+  tokio::spawn(async move {
+    while let Some(event) = receiver.next().await {
+      // debug!("RECEIVED {:?}", &event);
+      if let Ok(Event::NeighborUp(_key)) = event {
+        info!("New neighbor");
+      }
+      if let Ok(Event::NeighborDown(_key)) = event {
+        info!("Neighbor down");
+      }
+      if let Ok(Event::Received(msg)) = event {
+        if let Ok(msg) = serde_json::from_slice::<NetMessage>(&msg.content).map(|msg| msg.body) {
+          debug!("PARSED {:?}", &msg);
+          state.write().await.handle_message(msg).await;
+        } else {
+          debug!("Could not parse {:?}", &msg);
+        }
+      }
     }
   })
 }

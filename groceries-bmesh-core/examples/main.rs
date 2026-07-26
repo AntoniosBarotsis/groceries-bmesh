@@ -3,10 +3,10 @@ use std::sync::Arc;
 use anyhow::Context;
 use groceries_bmesh_core::{
   crdt::{NetMessage, PeerState},
-  setup, start_heartbeat_loop,
+  setup, start_heartbeat_loop, start_respond_loop,
 };
-use iroh_gossip::api::Event;
-use n0_future::StreamExt;
+pub use iroh_gossip::api::Event;
+pub use n0_future::StreamExt;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
@@ -62,23 +62,10 @@ async fn main() -> anyhow::Result<()> {
   //   }
   // });
 
-  while let Some(event) = receiver.next().await {
-    // debug!("RECEIVED {:?}", &event);
-    if let Ok(Event::NeighborUp(_key)) = event {
-      info!("New neighbor");
-    }
-    if let Ok(Event::NeighborDown(_key)) = event {
-      info!("Neighbor down");
-    }
-    if let Ok(Event::Received(msg)) = event {
-      if let Ok(msg) = serde_json::from_slice::<NetMessage>(&msg.content).map(|msg| msg.body) {
-        debug!("PARSED {:?}", &msg);
-        state.write().await.handle_message(msg).await;
-      } else {
-        debug!("Could not parse {:?}", &msg);
-      }
-    }
-  }
+  let state_clone = state.clone();
+  let _respond = start_respond_loop(receiver, state_clone);
+
+  tokio::signal::ctrl_c().await?;
   warn!("AFTER");
 
   router.shutdown().await.context("shutdown router")?;
