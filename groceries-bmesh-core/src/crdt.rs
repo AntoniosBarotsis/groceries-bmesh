@@ -147,7 +147,7 @@ impl PeerState {
       // TODO: Make sure this is fine
       let value_string = value_ctx.val.iter().any(|el| *el).to_string();
 
-      hash_map.insert(key.to_owned(), value_string);
+      let _unused = hash_map.insert(key.to_owned(), value_string);
     }
     hash_map
   }
