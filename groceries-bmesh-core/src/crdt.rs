@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, HashMap};
+use std::{
+  collections::{BTreeMap, HashMap},
+  path::PathBuf,
+};
 
 use crdts::{CmRDT, CvRDT, MVReg, Map, VClock, map};
 use iroh::PublicKey;
@@ -10,10 +13,16 @@ pub type Grocery = MVReg<bool, Actor>;
 pub type Groceries = Map<String, Grocery, Actor>;
 pub type Clock = VClock<Actor>;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpLog {
   up_by_actor: HashMap<Actor, BTreeMap<u64, map::Op<String, Grocery, Actor>>>,
   removes: Vec<map::Op<String, Grocery, Actor>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SaveData {
+  pub map: Groceries,
+  pub log: OpLog,
 }
 
 #[derive(Debug)]
@@ -158,6 +167,34 @@ impl PeerState {
       let _unused = hash_map.insert(key.to_owned(), value_string);
     }
     hash_map
+  }
+
+  pub async fn write_to_file(&self, path: PathBuf) -> Result<(), String> {
+    let data = SaveData {
+      map: self.map.clone(),
+      log: self.log.clone(),
+    };
+
+    let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+
+    tokio::fs::write(&path, json)
+      .await
+      .map_err(|e| e.to_string())?;
+
+    Ok(())
+  }
+
+  pub async fn load_from_file(&mut self, path: PathBuf) -> Result<(), String> {
+    let json = tokio::fs::read_to_string(path)
+      .await
+      .map_err(|e| e.to_string())?;
+
+    let data = serde_json::from_str::<SaveData>(&json).map_err(|e| e.to_string())?;
+
+    self.map = data.map;
+    self.log = data.log;
+
+    Ok(())
   }
 }
 
