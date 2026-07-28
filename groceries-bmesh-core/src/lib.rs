@@ -10,9 +10,10 @@ use iroh::{
   protocol::Router,
 };
 // use iroh_ble_transport::{BleTransport, Central, CentralConfig, Peripheral};
+pub use iroh_gossip::api::GossipReceiver;
 use iroh_gossip::{
   Gossip,
-  api::{Event, GossipReceiver, GossipSender},
+  api::{Event, GossipSender},
   // proto::HyparviewConfig,
 };
 pub use iroh_topic_tracker::{TopicDiscoveryConfig, TopicDiscoveryExt, TopicDiscoveryHandle};
