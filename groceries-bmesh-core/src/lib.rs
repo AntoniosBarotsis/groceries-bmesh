@@ -9,9 +9,11 @@ use iroh::{
   endpoint::{IdleTimeout, QuicTransportConfig, presets},
   protocol::Router,
 };
+// use iroh_ble_transport::{BleTransport, Central, CentralConfig, Peripheral};
 use iroh_gossip::{
   Gossip,
   api::{Event, GossipReceiver, GossipSender},
+  // proto::HyparviewConfig,
 };
 pub use iroh_topic_tracker::{TopicDiscoveryConfig, TopicDiscoveryExt, TopicDiscoveryHandle};
 pub use n0_future::StreamExt;
@@ -88,16 +90,58 @@ pub async fn setup(
 
   let config = QuicTransportConfig::builder()
     .keep_alive_interval(Duration::from_secs(5))
-    .max_idle_timeout(IdleTimeout::try_from(Duration::from_mins(1)).ok())
+    .max_idle_timeout(IdleTimeout::try_from(Duration::from_secs(15)).ok())
     .build();
+
+  // let central = Arc::new(
+  //   Central::with_config(CentralConfig {
+  //     connect_timeout: Some(std::time::Duration::from_secs(10)),
+  //     ..Default::default()
+  //   })
+  //   .await
+  //   .expect("Could not init central config"),
+  // );
+  // let peripheral = Arc::new(Peripheral::new().await.expect("could not init peripheral"));
+
+  // let ble = iroh_ble_transport::BleTransport::builder()
+  //   .central(central)
+  //   .peripheral(peripheral)
+  //   .build(secret_key.public())
+  //   .await            .map_err(|e| {
+  //       let msg = e.to_string();
+  //       if msg.contains("adapter not found") || msg.contains("AdapterNotFound") {
+  //         anyhow!("Bluetooth is not available on this device. A physical Bluetooth adapter is required — simulators and emulators are not supported.")
+  //       } else if msg.contains("not powered")
+  //           || msg.contains("timed out waiting for Bluetooth")
+  //           || msg.contains("power on")
+  //       {
+  //         anyhow!("Bluetooth is turned off. Please enable Bluetooth in Settings and restart the app.")
+  //       } else {
+  //           anyhow!(msg)
+  //       }
+  //   })?;
+
   let endpoint = Endpoint::builder(presets::N0DisableRelay)
     .secret_key(secret_key.clone())
     .address_lookup(iroh_mdns_address_lookup::MdnsAddressLookup::builder())
+    // .hooks(ble.dedup_hook())
+    // .add_custom_transport(ble.as_custom_transport())
+    // .address_lookup(ble.address_lookup())
+    // .clear_ip_transports()
     .transport_config(config)
     .bind()
     .await?;
 
-  let gossip = Gossip::builder().spawn(endpoint.clone());
+  // let hyparview = HyparviewConfig {
+  //   active_view_capacity: 3,
+  //   passive_view_capacity: 12,
+  //   shuffle_interval: std::time::Duration::from_secs(120),
+  //   ..Default::default()
+  // };
+
+  let gossip = Gossip::builder()
+    // .membership_config(hyparview)
+    .spawn(endpoint.clone());
 
   let router = Router::builder(endpoint.clone())
     .accept(iroh_gossip::ALPN, gossip.clone())
