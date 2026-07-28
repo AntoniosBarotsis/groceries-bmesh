@@ -122,9 +122,17 @@ impl PeerState {
   }
 
   pub async fn remove(&mut self, key: String) {
-    // doesnt look like this got applied locally
-    let ctx = self.map.read_ctx().derive_rm_ctx();
-    let op = self.map.rm(key, ctx);
+    let mut ctx = self.map.read_ctx();
+
+    // increment rm clock manually
+    // https://github.com/rust-crdt/rust-crdt/issues/160
+    let new_dot = ctx.rm_clock.inc(self.actor);
+    ctx.rm_clock.apply(new_dot);
+
+    let rm_ctx = crdts::ctx::RmCtx {
+      clock: ctx.rm_clock.clone(),
+    };
+    let op = self.map.rm(key, rm_ctx);
 
     self.apply_local_op(op).await;
   }
