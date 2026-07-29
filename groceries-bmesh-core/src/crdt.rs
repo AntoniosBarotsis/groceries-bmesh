@@ -92,6 +92,14 @@ impl PeerState {
         let missing_ops = self.log.missing_ops(&remote_clock);
 
         let msg = CoreMessage::AntiEntropyResponse { ops: missing_ops };
+
+        // FIXME: There is a limit of ~4kb, I'll need to detect that and figure out what I should do
+        // (either SnapshotResponse or blob)
+        tracing::info!(
+          "AntiEntropyResponse bytes = {}",
+          postcard::to_stdvec(&msg).unwrap().len()
+        );
+
         self.broadcast(msg).await;
       }
       CoreMessage::AntiEntropyResponse { ops } => {
@@ -114,6 +122,7 @@ impl PeerState {
         clock: _,
       } => {
         self.map.merge(incoming_state);
+        // FIXME: This seems problematic
         self.log.clear();
       }
     }
