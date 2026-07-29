@@ -41,7 +41,7 @@ pub struct NetMessage {
 
 impl NetMessage {
   pub fn to_vec(&self) -> Vec<u8> {
-    serde_json::to_vec(self).expect("serde_json::to_vec is infallible")
+    postcard::to_stdvec(&self).expect("Serialization failed")
   }
 }
 

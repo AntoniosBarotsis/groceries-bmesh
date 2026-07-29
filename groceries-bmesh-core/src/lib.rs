@@ -66,7 +66,7 @@ pub fn start_respond_loop(
         info!("Neighbor down");
       }
       if let Ok(Event::Received(msg)) = event {
-        if let Ok(msg) = serde_json::from_slice::<NetMessage>(&msg.content).map(|msg| msg.body) {
+        if let Ok(msg) = postcard::from_bytes::<NetMessage>(&msg.content).map(|msg| msg.body) {
           debug!("PARSED {:?}", &msg);
           state.write().await.handle_message(msg).await;
         } else {
