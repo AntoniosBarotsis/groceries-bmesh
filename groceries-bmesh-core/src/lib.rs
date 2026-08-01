@@ -2,8 +2,13 @@
 
 pub mod crdt;
 
-use std::{sync::Arc, time::Duration};
+use std::{
+  io::{Cursor, prelude::*},
+  sync::Arc,
+  time::Duration,
+};
 
+use flate2::read::GzDecoder;
 use iroh::{
   Endpoint, SecretKey,
   endpoint::{IdleTimeout, QuicTransportConfig, presets},
@@ -58,7 +63,7 @@ pub fn start_respond_loop(
 ) -> JoinHandle<()> {
   tokio::spawn(async move {
     while let Some(event) = receiver.next().await {
-      // debug!("RECEIVED {:?}", &event);
+      debug!("RECEIVED {:?}", &event);
       if let Ok(Event::NeighborUp(_key)) = event {
         info!("New neighbor");
       }
@@ -66,11 +71,15 @@ pub fn start_respond_loop(
         info!("Neighbor down");
       }
       if let Ok(Event::Received(msg)) = event {
-        if let Ok(msg) = postcard::from_bytes::<NetMessage>(&msg.content).map(|msg| msg.body) {
+        let mut d = GzDecoder::new(Cursor::new(msg.content));
+        let mut buf = vec![];
+        d.read_to_end(&mut buf).unwrap();
+
+        if let Ok(msg) = postcard::from_bytes::<NetMessage>(&buf).map(|msg| msg.body) {
           debug!("PARSED {:?}", &msg);
           state.write().await.handle_message(msg).await;
         } else {
-          debug!("Could not parse {:?}", &msg);
+          debug!("Could not parse {:?}", &buf);
         }
       }
     }

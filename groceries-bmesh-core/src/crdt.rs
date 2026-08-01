@@ -1,9 +1,11 @@
 use std::{
   collections::{BTreeMap, HashMap},
+  io::Write,
   path::PathBuf,
 };
 
 use crdts::{CmRDT, CvRDT, MVReg, Map, VClock, map};
+use flate2::{Compression, write::GzEncoder};
 use iroh::PublicKey;
 use iroh_gossip::api::GossipSender;
 use serde::{Deserialize, Serialize};
@@ -59,17 +61,26 @@ impl PeerState {
   }
 
   async fn broadcast(&self, msg: CoreMessage) {
+    let msg = NetMessage {
+      body: msg,
+      nonce: rand::random(),
+    }
+    .to_vec();
+
+    let mut e = GzEncoder::new(Vec::new(), Compression::default());
+    e.write_all(&msg).expect("Could not write bytes");
+    let compressed_bytes = e.finish().expect("Could not compress");
+
+    tracing::debug!(
+      "compressed_bytes from {} to {}",
+      msg.len(),
+      compressed_bytes.len()
+    );
+
     // FIXME: Apparently this can fail after I ctrl-c because the receiver gets deallocated. Not sure I care though.
     self
       .sender
-      .broadcast(
-        NetMessage {
-          body: msg,
-          nonce: rand::random(),
-        }
-        .to_vec()
-        .into(),
-      )
+      .broadcast(compressed_bytes.into())
       .await
       .expect("Broadcast failed");
   }
@@ -91,14 +102,9 @@ impl PeerState {
       } => {
         let missing_ops = self.log.missing_ops(&remote_clock);
 
-        let msg = CoreMessage::AntiEntropyResponse { ops: missing_ops };
-
         // FIXME: There is a limit of ~4kb, I'll need to detect that and figure out what I should do
         // (either SnapshotResponse or blob)
-        tracing::info!(
-          "AntiEntropyResponse bytes = {}",
-          postcard::to_stdvec(&msg).unwrap().len()
-        );
+        let msg = CoreMessage::AntiEntropyResponse { ops: missing_ops };
 
         self.broadcast(msg).await;
       }
