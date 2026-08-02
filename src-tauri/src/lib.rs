@@ -38,6 +38,14 @@ async fn remove(state: State<'_, AppState>, key: String) -> Result<(), ()> {
 }
 
 #[tauri::command]
+async fn clear(state: State<'_, AppState>) -> Result<(), ()> {
+    let mut guard = state.write().await;
+    guard.clear();
+
+    Ok(())
+}
+
+#[tauri::command]
 async fn to_hashmap(state: State<'_, AppState>) -> Result<HashMap<String, String>, ()> {
     let mut guard = state.read().await;
     let res = guard.to_hashmap();
@@ -145,6 +153,7 @@ pub async fn run() {
             get,
             update,
             remove,
+            clear,
             to_hashmap,
             start_background_tasks,
             save_state,

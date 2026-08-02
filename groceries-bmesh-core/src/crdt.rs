@@ -250,6 +250,11 @@ impl PeerState {
     self.apply_local_op(op).await;
   }
 
+  pub fn clear(&mut self) {
+    self.map = Groceries::new();
+    self.log.clear();
+  }
+
   pub async fn remove(&mut self, key: String) {
     let mut ctx = self.map.read_ctx();
 
