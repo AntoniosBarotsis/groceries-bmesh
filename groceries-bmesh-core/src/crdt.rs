@@ -14,6 +14,8 @@ pub type Actor = PublicKey;
 pub type Grocery = MVReg<bool, Actor>;
 pub type Groceries = Map<String, Grocery, Actor>;
 pub type Clock = VClock<Actor>;
+// const MAX_MESSAGE_SIZE: usize = iroh_gossip::proto::DEFAULT_MAX_MESSAGE_SIZE;
+const MAX_MESSAGE_SIZE: usize = 300;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpLog {
@@ -60,7 +62,7 @@ impl PeerState {
     }
   }
 
-  async fn broadcast(&self, msg: CoreMessage) {
+  async fn serialize_compress_msg(msg: CoreMessage) -> Vec<u8> {
     let msg = NetMessage {
       body: msg,
       nonce: rand::random(),
@@ -77,12 +79,31 @@ impl PeerState {
       compressed_bytes.len()
     );
 
+    compressed_bytes
+  }
+
+  async fn broadcast_raw(&self, msg: Vec<u8>) {
     // FIXME: Apparently this can fail after I ctrl-c because the receiver gets deallocated. Not sure I care though.
     self
       .sender
-      .broadcast(compressed_bytes.into())
+      .broadcast(msg.into())
       .await
       .expect("Broadcast failed");
+  }
+
+  // TODO: Maybe it would make sense for this to return a Result
+  async fn broadcast(&self, msg: CoreMessage) {
+    let compressed_bytes = Self::serialize_compress_msg(msg).await;
+
+    if compressed_bytes.len() > MAX_MESSAGE_SIZE {
+      tracing::warn!(
+        "Message length ({} bytes) exceeded {} bytes",
+        compressed_bytes.len(),
+        MAX_MESSAGE_SIZE
+      );
+    }
+
+    self.broadcast_raw(compressed_bytes).await;
   }
 
   pub async fn send_heartbeat(&self) {
@@ -102,11 +123,45 @@ impl PeerState {
       } => {
         let missing_ops = self.log.missing_ops(&remote_clock);
 
-        // FIXME: There is a limit of ~4kb, I'll need to detect that and figure out what I should do
-        // (either SnapshotResponse or blob)
-        let msg = CoreMessage::AntiEntropyResponse { ops: missing_ops };
+        // TODO: This if block is super messy, I should make a try_send method instead or something
+        if !missing_ops.is_empty() {
+          let msg = CoreMessage::AntiEntropyResponse { ops: missing_ops };
+          let serialized = Self::serialize_compress_msg(msg).await;
 
-        self.broadcast(msg).await;
+          // If we can broadcast it, then do that, else send a snapshot
+          if serialized.len() < MAX_MESSAGE_SIZE {
+            tracing::debug!("Broadcasting AntiEntropyResponse");
+
+            self.broadcast_raw(serialized).await;
+          } else {
+            let state = self.map.clone();
+            let clock = self.map.read_ctx().add_clock;
+            let msg = CoreMessage::SnapshotResponse { state, clock };
+            let serialized = Self::serialize_compress_msg(msg).await;
+
+            if serialized.len() < MAX_MESSAGE_SIZE {
+              tracing::debug!("AntiEntropyResponse too big, broadcasting SnapshotResponse");
+
+              self.broadcast_raw(serialized).await;
+            } else {
+              // FIXME: The SnapshotResponse can still be over the limit (though that's harder to occur since
+              // the state alone would have to be over 4kb compressed). But that can still happen, we need to
+              // check and fall back to an iroh-blob here.
+              tracing::error!("SnapshotResponse is too big to send, need to implement blobs");
+            }
+          }
+        } else {
+          // if we don't have any, compare clocks
+          let our_clock = self.map.read_ctx().add_clock;
+          if remote_clock < our_clock {
+            // they are missing the snapshot – send the full state
+            let state = self.map.clone();
+            let clock = self.map.read_ctx().add_clock;
+            let msg = CoreMessage::SnapshotResponse { state, clock };
+            // FIXME: This can also fail
+            self.broadcast(msg).await;
+          }
+        }
       }
       CoreMessage::AntiEntropyResponse { ops } => {
         for op in ops {
@@ -128,7 +183,6 @@ impl PeerState {
         clock: _,
       } => {
         self.map.merge(incoming_state);
-        // FIXME: This seems problematic
         self.log.clear();
       }
     }
