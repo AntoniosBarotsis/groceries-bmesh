@@ -111,7 +111,7 @@ impl PeerState {
     Ok(())
   }
 
-  async fn store_blob(&mut self, data: Vec<u8>) -> BlobTicket {
+  async fn store_blob(&self, data: Vec<u8>) -> BlobTicket {
     let tag = self
       .blobs
       .add_bytes(data)
@@ -119,6 +119,28 @@ impl PeerState {
       .expect("Could not add blob to storage");
 
     BlobTicket::new(self.endpoint.id().into(), tag.hash, tag.format)
+  }
+
+  async fn load_blob(&self, ticket: BlobTicket) -> CoreMessage {
+    tracing::debug!("Blob received with hash = {}", ticket.hash());
+
+    let _res = self
+      .blobs
+      .downloader(&self.endpoint)
+      .download(ticket.hash(), Shuffled::new(vec![ticket.addr().id]))
+      .await;
+
+    let blob = self
+      .blobs
+      .get_bytes(ticket.hash())
+      .await
+      .expect("Could not download blob");
+
+    let mut d = GzDecoder::new(Cursor::new(blob));
+    let mut buf = vec![];
+    d.read_to_end(&mut buf).unwrap();
+
+    postcard::from_bytes::<CoreMessage>(&buf).expect("Could not decode")
   }
 
   pub async fn send_heartbeat(&self) {
@@ -204,25 +226,8 @@ impl PeerState {
         self.log.clear();
       }
       CoreMessage::Blob { ticket } => {
-        tracing::debug!("Blob received with hash = {}", ticket.hash());
+        let msg = self.load_blob(ticket).await;
 
-        let _res = self
-          .blobs
-          .downloader(&self.endpoint)
-          .download(ticket.hash(), Shuffled::new(vec![ticket.addr().id]))
-          .await;
-
-        let blob = self
-          .blobs
-          .get_bytes(ticket.hash())
-          .await
-          .expect("Could not download blob");
-
-        let mut d = GzDecoder::new(Cursor::new(blob));
-        let mut buf = vec![];
-        d.read_to_end(&mut buf).unwrap();
-
-        let msg = postcard::from_bytes::<CoreMessage>(&buf).expect("Could not decode");
         tracing::debug!("Decoded blob");
         Box::pin(self.handle_message(msg)).await;
         tracing::debug!("Handled blob");
