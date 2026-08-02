@@ -10,6 +10,7 @@ use iroh::{Endpoint, PublicKey};
 use iroh_blobs::{BlobsProtocol, api::downloader::Shuffled, ticket::BlobTicket};
 use iroh_gossip::api::GossipSender;
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 
 pub type Actor = PublicKey;
 pub type Grocery = MVReg<bool, Actor>;
@@ -78,7 +79,7 @@ impl PeerState {
     e.write_all(&msg).expect("Could not write bytes");
     let compressed_bytes = e.finish().expect("Could not compress");
 
-    tracing::debug!(
+    debug!(
       "compressed_bytes from {} to {}",
       msg.len(),
       compressed_bytes.len()
@@ -93,7 +94,7 @@ impl PeerState {
     if let Err(serialized) = self.broadcast(msg).await {
       let ticket = self.store_blob(serialized).await;
       let msg = CoreMessage::Blob { ticket };
-      tracing::debug!("Sending blob");
+      debug!("Sending blob");
       let _res = self.broadcast(msg).await;
     }
   }
@@ -103,7 +104,7 @@ impl PeerState {
     let compressed_bytes = Self::serialize_compress_msg(msg);
 
     if compressed_bytes.len() > MAX_MESSAGE_SIZE {
-      tracing::debug!(
+      debug!(
         "Message length ({} bytes) exceeded {} bytes",
         compressed_bytes.len(),
         MAX_MESSAGE_SIZE
@@ -132,7 +133,7 @@ impl PeerState {
   }
 
   async fn load_blob(&self, ticket: BlobTicket) -> CoreMessage {
-    tracing::debug!("Blob received with hash = {}", ticket.hash());
+    debug!("Blob received with hash = {}", ticket.hash());
 
     let _res = self
       .blobs
@@ -211,7 +212,7 @@ impl PeerState {
         if let Err(serialized) = self.broadcast(msg).await {
           let ticket = self.store_blob(serialized).await;
           let msg = CoreMessage::Blob { ticket };
-          tracing::debug!("Sending blob");
+          debug!("Sending blob");
           let _res = self.broadcast(msg).await;
         }
       }
@@ -225,7 +226,7 @@ impl PeerState {
       CoreMessage::Blob { ticket } => {
         let msg = self.load_blob(ticket).await;
 
-        tracing::debug!("Decoded blob");
+        debug!("Decoded blob");
         // SAFETY: Since Blobs can only ever contain SnapshotResponses, recursion will only ever be 1 step deep
         assert!(
           matches!(msg, CoreMessage::SnapshotResponse { .. }),
@@ -233,7 +234,7 @@ impl PeerState {
         );
 
         Box::pin(self.handle_message(msg)).await;
-        tracing::debug!("Handled blob");
+        debug!("Handled blob");
       }
     }
   }
