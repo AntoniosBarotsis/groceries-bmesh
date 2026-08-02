@@ -3,7 +3,7 @@
 pub mod crdt;
 
 use std::{
-  io::{Cursor, prelude::*},
+  io::{Cursor, Read},
   sync::Arc,
   time::Duration,
 };
@@ -14,11 +14,12 @@ use iroh::{
   endpoint::{IdleTimeout, QuicTransportConfig, presets},
   protocol::Router,
 };
+use iroh_blobs::{BlobsProtocol, store::mem::MemStore};
 // use iroh_ble_transport::{BleTransport, Central, CentralConfig, Peripheral};
 pub use iroh_gossip::api::GossipReceiver;
 use iroh_gossip::{
   Gossip,
-  api::{Event, GossipSender},
+  api::Event,
   // proto::HyparviewConfig,
 };
 pub use iroh_topic_tracker::{TopicDiscoveryConfig, TopicDiscoveryExt, TopicDiscoveryHandle};
@@ -27,7 +28,7 @@ use sha2::{Digest, Sha256};
 use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::{debug, info};
 
-use crate::crdt::{Actor, NetMessage, PeerState};
+use crate::crdt::{NetMessage, PeerState};
 
 // pub fn get_key() -> anyhow::Result<SecretKey> {
 //   let key_path = PathBuf::from("my_peer_key.bin");
@@ -88,13 +89,7 @@ pub fn start_respond_loop(
 
 pub async fn setup(
   id: u8,
-) -> anyhow::Result<(
-  Actor,
-  GossipSender,
-  GossipReceiver,
-  Router,
-  TopicDiscoveryHandle,
-)> {
+) -> anyhow::Result<(GossipReceiver, Router, TopicDiscoveryHandle, PeerState)> {
   info!(id = id);
   let secret_key = get_key(id)?;
 
@@ -149,12 +144,16 @@ pub async fn setup(
   //   ..Default::default()
   // };
 
+  let store = MemStore::new();
+  let blobs = BlobsProtocol::new(&store, None);
+
   let gossip = Gossip::builder()
     // .membership_config(hyparview)
     .spawn(endpoint.clone());
 
   let router = Router::builder(endpoint.clone())
     .accept(iroh_gossip::ALPN, gossip.clone())
+    .accept(iroh_blobs::ALPN, blobs.clone())
     .spawn();
 
   // TODO: Rename this
@@ -163,7 +162,7 @@ pub async fn setup(
   hasher.update(topic_name.as_bytes());
   let topic_id = hasher.finalize().to_vec();
 
-  let config = TopicDiscoveryConfig::builder(endpoint)
+  let config = TopicDiscoveryConfig::builder(endpoint.clone())
     .max_peers_per_round(Some(5))
     // .discovery_interval(Duration::from_secs(60))
     // .discovery_interval_no_peers(Duration::from_secs(2))
@@ -174,11 +173,7 @@ pub async fn setup(
     .subscribe_with_discovery(topic_id, vec![], config)
     .await?;
 
-  Ok((
-    secret_key.public(),
-    sender,
-    receiver,
-    router,
-    discovery_handle,
-  ))
+  let peerstate = PeerState::new(secret_key.public(), sender, blobs, endpoint);
+
+  Ok((receiver, router, discovery_handle, peerstate))
 }

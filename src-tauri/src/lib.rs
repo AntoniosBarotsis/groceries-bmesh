@@ -129,12 +129,11 @@ pub async fn run() {
             //     }
             // }
 
-            let (actor, sender, receiver, router, discovery_handle) =
-                futures::executor::block_on(async {
-                    groceries_bmesh_core::setup(id).await.unwrap()
-                });
+            let (receiver, router, discovery_handle, state) = futures::executor::block_on(async {
+                groceries_bmesh_core::setup(id).await.unwrap()
+            });
 
-            let state = Arc::new(RwLock::new(PeerState::new(actor, sender.clone())));
+            let state = Arc::new(RwLock::new(state));
             app.manage(state.clone());
             app.manage((router, discovery_handle));
             app.manage(Arc::new(Mutex::new(Some(receiver))));

@@ -1,12 +1,13 @@
 use std::{
   collections::{BTreeMap, HashMap},
-  io::Write,
+  io::{Cursor, Read, Write},
   path::PathBuf,
 };
 
 use crdts::{CmRDT, CvRDT, MVReg, Map, VClock, map};
-use flate2::{Compression, write::GzEncoder};
-use iroh::PublicKey;
+use flate2::{Compression, read::GzDecoder, write::GzEncoder};
+use iroh::{Endpoint, PublicKey};
+use iroh_blobs::{BlobsProtocol, api::downloader::Shuffled, ticket::BlobTicket};
 use iroh_gossip::api::GossipSender;
 use serde::{Deserialize, Serialize};
 
@@ -35,6 +36,8 @@ pub struct PeerState {
   pub log: OpLog,
   pub sender: GossipSender,
   pub actor: Actor,
+  pub blobs: BlobsProtocol,
+  pub endpoint: Endpoint,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -50,7 +53,7 @@ impl NetMessage {
 }
 
 impl PeerState {
-  pub fn new(actor: Actor, sender: GossipSender) -> Self {
+  pub fn new(actor: Actor, sender: GossipSender, blobs: BlobsProtocol, endpoint: Endpoint) -> Self {
     Self {
       map: Groceries::new(),
       log: OpLog {
@@ -59,10 +62,12 @@ impl PeerState {
       },
       sender,
       actor,
+      blobs,
+      endpoint,
     }
   }
 
-  async fn serialize_compress_msg(msg: CoreMessage) -> Vec<u8> {
+  fn serialize_compress_msg(msg: CoreMessage) -> Vec<u8> {
     let msg = NetMessage {
       body: msg,
       nonce: rand::random(),
@@ -82,34 +87,44 @@ impl PeerState {
     compressed_bytes
   }
 
-  async fn broadcast_raw(&self, msg: Vec<u8>) {
-    // FIXME: Apparently this can fail after I ctrl-c because the receiver gets deallocated. Not sure I care though.
-    self
-      .sender
-      .broadcast(msg.into())
-      .await
-      .expect("Broadcast failed");
-  }
-
   // TODO: Maybe it would make sense for this to return a Result
-  async fn broadcast(&self, msg: CoreMessage) {
-    let compressed_bytes = Self::serialize_compress_msg(msg).await;
+  // FIXME: Apparently this can fail after I ctrl-c because the receiver gets deallocated. Not sure I care though.
+  async fn broadcast(&self, msg: CoreMessage) -> Result<(), Vec<u8>> {
+    let compressed_bytes = Self::serialize_compress_msg(msg);
 
     if compressed_bytes.len() > MAX_MESSAGE_SIZE {
-      tracing::warn!(
+      tracing::debug!(
         "Message length ({} bytes) exceeded {} bytes",
         compressed_bytes.len(),
         MAX_MESSAGE_SIZE
       );
+
+      return Err(compressed_bytes);
     }
 
-    self.broadcast_raw(compressed_bytes).await;
+    self
+      .sender
+      .broadcast(compressed_bytes.into())
+      .await
+      .expect("Broadcast failed");
+
+    Ok(())
+  }
+
+  async fn store_blob(&mut self, data: Vec<u8>) -> BlobTicket {
+    let tag = self
+      .blobs
+      .add_bytes(data)
+      .await
+      .expect("Could not add blob to storage");
+
+    BlobTicket::new(self.endpoint.id().into(), tag.hash, tag.format)
   }
 
   pub async fn send_heartbeat(&self) {
     let clock = self.map.read_ctx().add_clock;
     let msg = CoreMessage::Heartbeat { clock };
-    self.broadcast(msg).await;
+    let _res = self.broadcast(msg).await;
   }
 
   pub async fn handle_message(&mut self, msg: CoreMessage) {
@@ -124,30 +139,22 @@ impl PeerState {
         let missing_ops = self.log.missing_ops(&remote_clock);
 
         // TODO: This if block is super messy, I should make a try_send method instead or something
+        #[allow(clippy::if_not_else)]
         if !missing_ops.is_empty() {
           let msg = CoreMessage::AntiEntropyResponse { ops: missing_ops };
-          let serialized = Self::serialize_compress_msg(msg).await;
 
-          // If we can broadcast it, then do that, else send a snapshot
-          if serialized.len() < MAX_MESSAGE_SIZE {
-            tracing::debug!("Broadcasting AntiEntropyResponse");
-
-            self.broadcast_raw(serialized).await;
-          } else {
+          // Try to broadcast it, if we can't then we send a snapshot
+          if let Err(_serialized) = self.broadcast(msg).await {
             let state = self.map.clone();
             let clock = self.map.read_ctx().add_clock;
             let msg = CoreMessage::SnapshotResponse { state, clock };
-            let serialized = Self::serialize_compress_msg(msg).await;
 
-            if serialized.len() < MAX_MESSAGE_SIZE {
-              tracing::debug!("AntiEntropyResponse too big, broadcasting SnapshotResponse");
-
-              self.broadcast_raw(serialized).await;
-            } else {
-              // FIXME: The SnapshotResponse can still be over the limit (though that's harder to occur since
-              // the state alone would have to be over 4kb compressed). But that can still happen, we need to
-              // check and fall back to an iroh-blob here.
-              tracing::error!("SnapshotResponse is too big to send, need to implement blobs");
+            // Try to broadcast it, if we can't then we need to send a blob
+            if let Err(serialized) = self.broadcast(msg).await {
+              let ticket = self.store_blob(serialized).await;
+              let msg = CoreMessage::Blob { ticket };
+              tracing::debug!("Sending blob");
+              let _res = self.broadcast(msg).await;
             }
           }
         } else {
@@ -158,8 +165,14 @@ impl PeerState {
             let state = self.map.clone();
             let clock = self.map.read_ctx().add_clock;
             let msg = CoreMessage::SnapshotResponse { state, clock };
-            // FIXME: This can also fail
-            self.broadcast(msg).await;
+            // Try to broadcast it, if we can't then we need to send a blob
+
+            if let Err(serialized) = self.broadcast(msg).await {
+              let ticket = self.store_blob(serialized).await;
+              let msg = CoreMessage::Blob { ticket };
+              tracing::debug!("Sending blob");
+              let _res = self.broadcast(msg).await;
+            }
           }
         }
       }
@@ -176,7 +189,12 @@ impl PeerState {
         let state = self.map.clone();
         let clock = self.map.read_ctx().add_clock;
         let msg = CoreMessage::SnapshotResponse { state, clock };
-        self.broadcast(msg).await;
+        if let Err(serialized) = self.broadcast(msg).await {
+          let ticket = self.store_blob(serialized).await;
+          let msg = CoreMessage::Blob { ticket };
+          tracing::debug!("Sending blob");
+          let _res = self.broadcast(msg).await;
+        }
       }
       CoreMessage::SnapshotResponse {
         state: incoming_state,
@@ -184,6 +202,30 @@ impl PeerState {
       } => {
         self.map.merge(incoming_state);
         self.log.clear();
+      }
+      CoreMessage::Blob { ticket } => {
+        tracing::debug!("Blob received with hash = {}", ticket.hash());
+
+        let _res = self
+          .blobs
+          .downloader(&self.endpoint)
+          .download(ticket.hash(), Shuffled::new(vec![ticket.addr().id]))
+          .await;
+
+        let blob = self
+          .blobs
+          .get_bytes(ticket.hash())
+          .await
+          .expect("Could not download blob");
+
+        let mut d = GzDecoder::new(Cursor::new(blob));
+        let mut buf = vec![];
+        d.read_to_end(&mut buf).unwrap();
+
+        let msg = postcard::from_bytes::<CoreMessage>(&buf).expect("Could not decode");
+        tracing::debug!("Decoded blob");
+        Box::pin(self.handle_message(msg)).await;
+        tracing::debug!("Handled blob");
       }
     }
   }
@@ -221,7 +263,7 @@ impl PeerState {
     self.map.apply(op.clone());
 
     let msg = CoreMessage::Op(op);
-    self.broadcast(msg).await;
+    let _res = self.broadcast(msg).await;
   }
 
   pub fn to_hashmap(&self) -> HashMap<String, String> {
@@ -328,5 +370,8 @@ pub enum CoreMessage {
   SnapshotResponse {
     state: Groceries,
     clock: Clock,
+  },
+  Blob {
+    ticket: BlobTicket,
   },
 }

@@ -14,39 +14,12 @@ async fn main() -> anyhow::Result<()> {
   // TODO: This is for testing, change it later
   let id = std::env::var("ID").expect("ID not passed");
   let id = id.parse::<u8>().expect("Could not parse id");
-  let (actor, sender, receiver, router, _discovery_handle) = setup(id).await?;
+  let (receiver, router, _discovery_handle, state) = setup(id).await?;
   info!("Joined");
 
-  let state = Arc::new(RwLock::new(PeerState::new(actor, sender.clone())));
+  let state = Arc::new(RwLock::new(state));
 
   let _heartbeat = start_heartbeat_loop(state.clone());
-
-  // Simulated action sequence
-  // let state_clone = state.clone();
-  // tokio::spawn(async move {
-  //   tokio::time::sleep(Duration::from_secs(7)).await;
-  //   info!("Beginning event sequence");
-
-  //   info!("Inserting hello->world");
-  //   state_clone
-  //     .write()
-  //     .await
-  //     .insert("hello".to_owned(), "world".to_owned())
-  //     .await;
-
-  //   tokio::time::sleep(Duration::from_secs(5)).await;
-
-  //   info!("Updating hello->world 2");
-  //   state_clone
-  //     .write()
-  //     .await
-  //     .update("hello".to_owned(), |_v| "world 2".to_owned())
-  //     .await;
-
-  //   // tokio::time::sleep(Duration::from_secs(15)).await;
-  //   // info!("Removing hello");
-  //   // state_clone.write().await.remove("hello".to_owned()).await;
-  // });
 
   let state_clone = state.clone();
   tokio::spawn(async move {
