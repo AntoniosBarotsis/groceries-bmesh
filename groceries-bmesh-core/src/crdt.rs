@@ -29,6 +29,7 @@ pub struct OpLog {
 pub struct SaveData {
   pub map: Groceries,
   pub log: OpLog,
+  pub rm_clock: Clock,
 }
 
 #[derive(Debug)]
@@ -39,6 +40,7 @@ pub struct PeerState {
   pub actor: Actor,
   pub blobs: BlobsProtocol,
   pub endpoint: Endpoint,
+  pub rm_clock: Clock,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -65,6 +67,7 @@ impl PeerState {
       actor,
       blobs,
       endpoint,
+      rm_clock: VClock::new(),
     }
   }
 
@@ -155,8 +158,13 @@ impl PeerState {
   }
 
   pub async fn send_heartbeat(&self) {
-    let clock = self.map.read_ctx().add_clock;
-    let msg = CoreMessage::Heartbeat { clock };
+    let add_clock = self.map.read_ctx().add_clock;
+    let rm_clock = self.rm_clock.clone();
+    let msg = CoreMessage::Heartbeat {
+      add_clock,
+      rm_clock,
+    };
+
     let _res = self.broadcast(msg).await;
   }
 
@@ -164,12 +172,17 @@ impl PeerState {
     match msg {
       CoreMessage::Op(op) => {
         self.log.record_op(&op);
-        self.map.apply(op);
+        self.map.apply(op.clone());
+
+        if let map::Op::Rm { clock, .. } = op {
+          self.rm_clock.merge(clock);
+        }
       }
       CoreMessage::Heartbeat {
-        clock: remote_clock,
+        add_clock: remote_add_clock,
+        rm_clock: remote_rm_clock,
       } => {
-        let missing_ops = self.log.missing_ops(&remote_clock);
+        let missing_ops = self.log.missing_ops(&remote_add_clock, &remote_rm_clock);
 
         // TODO: This if block is super messy, I should make a try_send method instead or something
         #[allow(clippy::if_not_else)]
@@ -179,18 +192,21 @@ impl PeerState {
           // Try to broadcast it, if we can't then we send a snapshot
           if let Err(_serialized) = self.broadcast(msg).await {
             let state = self.map.clone();
-            let clock = self.map.read_ctx().add_clock;
-            let msg = CoreMessage::SnapshotResponse { state, clock };
+            let msg = CoreMessage::SnapshotResponse {
+              state,
+              rm_clock: self.rm_clock.clone(),
+            };
             self.try_broadcast(msg).await;
           }
         } else {
           // if we don't have any, compare clocks
-          let our_clock = self.map.read_ctx().add_clock;
-          if remote_clock < our_clock {
+          let add_clock = self.map.read_ctx().add_clock;
+          let rm_clock = self.rm_clock.clone();
+
+          if remote_add_clock < add_clock || remote_rm_clock < rm_clock {
             // they are missing the snapshot – send the full state
             let state = self.map.clone();
-            let clock = self.map.read_ctx().add_clock;
-            let msg = CoreMessage::SnapshotResponse { state, clock };
+            let msg = CoreMessage::SnapshotResponse { state, rm_clock };
 
             self.try_broadcast(msg).await;
           }
@@ -199,7 +215,11 @@ impl PeerState {
       CoreMessage::AntiEntropyResponse { ops } => {
         for op in ops {
           self.log.record_op(&op);
-          self.map.apply(op);
+          self.map.apply(op.clone());
+
+          if let map::Op::Rm { clock, .. } = op {
+            self.rm_clock.merge(clock);
+          }
         }
       }
       // TODO: I never send this. I could probably remove it, the only concern is that its faster than AntiEntropyResponse.
@@ -207,8 +227,10 @@ impl PeerState {
       // have the other node notice that and send a SnapshotRequest?
       CoreMessage::SnapshotRequest => {
         let state = self.map.clone();
-        let clock = self.map.read_ctx().add_clock;
-        let msg = CoreMessage::SnapshotResponse { state, clock };
+        let msg = CoreMessage::SnapshotResponse {
+          state,
+          rm_clock: self.rm_clock.clone(),
+        };
         if let Err(serialized) = self.broadcast(msg).await {
           let ticket = self.store_blob(serialized).await;
           let msg = CoreMessage::Blob { ticket };
@@ -218,10 +240,11 @@ impl PeerState {
       }
       CoreMessage::SnapshotResponse {
         state: incoming_state,
-        clock: _,
+        rm_clock: incoming_rm_clock,
       } => {
         self.map.merge(incoming_state);
         self.log.clear();
+        self.rm_clock.merge(incoming_rm_clock);
       }
       CoreMessage::Blob { ticket } => {
         let msg = self.load_blob(ticket).await;
@@ -253,6 +276,7 @@ impl PeerState {
   pub fn clear(&mut self) {
     self.map = Groceries::new();
     self.log.clear();
+    self.rm_clock = VClock::new();
   }
 
   pub async fn remove(&mut self, key: String) {
@@ -276,6 +300,10 @@ impl PeerState {
     self.log.record_op(&op);
     self.map.apply(op.clone());
 
+    if let map::Op::Rm { clock, .. } = &op {
+      self.rm_clock.merge(clock.to_owned());
+    }
+
     let msg = CoreMessage::Op(op);
     let _res = self.broadcast(msg).await;
   }
@@ -298,6 +326,7 @@ impl PeerState {
     let data = SaveData {
       map: self.map.clone(),
       log: self.log.clone(),
+      rm_clock: self.rm_clock.clone(),
     };
 
     let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
@@ -318,6 +347,7 @@ impl PeerState {
 
     self.map = data.map;
     self.log = data.log;
+    self.rm_clock = data.rm_clock;
 
     Ok(())
   }
@@ -346,11 +376,15 @@ impl OpLog {
   }
 
   /// Returns all ops that the remote peer is missing
-  pub fn missing_ops(&self, remote_clock: &VClock<Actor>) -> Vec<map::Op<String, Grocery, Actor>> {
+  pub fn missing_ops(
+    &self,
+    remote_add_clock: &VClock<Actor>,
+    remote_rm_clock: &VClock<Actor>,
+  ) -> Vec<map::Op<String, Grocery, Actor>> {
     let mut missing = vec![];
 
     for (actor, ops_by_counter) in &self.up_by_actor {
-      let remote_counter = remote_clock.get(actor);
+      let remote_counter = remote_add_clock.get(actor);
 
       // Send all ops with counter > remote_counter
       for (_counter, op) in ops_by_counter.range(remote_counter + 1..) {
@@ -361,7 +395,7 @@ impl OpLog {
     for op in &self.removes {
       if let map::Op::Rm { clock, .. } = op {
         // Remote needs this remove if its clock does NOT yet dominate the remove's context.
-        if !remote_clock.ge(clock) {
+        if !remote_rm_clock.ge(clock) {
           missing.push(op.clone());
         }
       }
@@ -375,7 +409,8 @@ impl OpLog {
 pub enum CoreMessage {
   Op(map::Op<String, Grocery, Actor>),
   Heartbeat {
-    clock: Clock,
+    add_clock: Clock,
+    rm_clock: Clock,
   },
   AntiEntropyResponse {
     ops: Vec<map::Op<String, Grocery, Actor>>,
@@ -383,7 +418,7 @@ pub enum CoreMessage {
   SnapshotRequest,
   SnapshotResponse {
     state: Groceries,
-    clock: Clock,
+    rm_clock: Clock,
   },
   Blob {
     ticket: BlobTicket,
