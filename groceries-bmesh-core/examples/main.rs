@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
-use groceries_bmesh_core::{crdt::PeerState, setup, start_heartbeat_loop, start_respond_loop};
+use groceries_bmesh_core::{setup, start_heartbeat_loop, start_respond_loop};
 pub use iroh_gossip::api::Event;
 pub use n0_future::StreamExt;
 use tokio::sync::RwLock;
