@@ -87,6 +87,17 @@ impl PeerState {
     compressed_bytes
   }
 
+  /// Tries to broadcast and falls back to a blob if it can't
+  async fn try_broadcast(&self, msg: CoreMessage) {
+    // Try to broadcast it, if we can't then we need to send a blob
+    if let Err(serialized) = self.broadcast(msg).await {
+      let ticket = self.store_blob(serialized).await;
+      let msg = CoreMessage::Blob { ticket };
+      tracing::debug!("Sending blob");
+      let _res = self.broadcast(msg).await;
+    }
+  }
+
   // FIXME: Apparently this can fail after I ctrl-c because the receiver gets deallocated. Not sure I care though.
   async fn broadcast(&self, msg: CoreMessage) -> Result<(), Vec<u8>> {
     let compressed_bytes = Self::serialize_compress_msg(msg);
@@ -169,14 +180,7 @@ impl PeerState {
             let state = self.map.clone();
             let clock = self.map.read_ctx().add_clock;
             let msg = CoreMessage::SnapshotResponse { state, clock };
-
-            // Try to broadcast it, if we can't then we need to send a blob
-            if let Err(serialized) = self.broadcast(msg).await {
-              let ticket = self.store_blob(serialized).await;
-              let msg = CoreMessage::Blob { ticket };
-              tracing::debug!("Sending blob");
-              let _res = self.broadcast(msg).await;
-            }
+            self.try_broadcast(msg).await;
           }
         } else {
           // if we don't have any, compare clocks
@@ -186,14 +190,8 @@ impl PeerState {
             let state = self.map.clone();
             let clock = self.map.read_ctx().add_clock;
             let msg = CoreMessage::SnapshotResponse { state, clock };
-            // Try to broadcast it, if we can't then we need to send a blob
 
-            if let Err(serialized) = self.broadcast(msg).await {
-              let ticket = self.store_blob(serialized).await;
-              let msg = CoreMessage::Blob { ticket };
-              tracing::debug!("Sending blob");
-              let _res = self.broadcast(msg).await;
-            }
+            self.try_broadcast(msg).await;
           }
         }
       }
@@ -228,6 +226,12 @@ impl PeerState {
         let msg = self.load_blob(ticket).await;
 
         tracing::debug!("Decoded blob");
+        // SAFETY: Since Blobs can only ever contain SnapshotResponses, recursion will only ever be 1 step deep
+        assert!(
+          matches!(msg, CoreMessage::SnapshotResponse { .. }),
+          "Blob should only ever contain a SnapshotResponse"
+        );
+
         Box::pin(self.handle_message(msg)).await;
         tracing::debug!("Handled blob");
       }
