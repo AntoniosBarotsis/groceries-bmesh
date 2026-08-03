@@ -222,22 +222,6 @@ impl PeerState {
           }
         }
       }
-      // TODO: I never send this. I could probably remove it, the only concern is that its faster than AntiEntropyResponse.
-      // Maybe I can check if the heartbeat is really far back and in that case not respond with AntiEntropyResponse and
-      // have the other node notice that and send a SnapshotRequest?
-      CoreMessage::SnapshotRequest => {
-        let state = self.map.clone();
-        let msg = CoreMessage::SnapshotResponse {
-          state,
-          rm_clock: self.rm_clock.clone(),
-        };
-        if let Err(serialized) = self.broadcast(msg).await {
-          let ticket = self.store_blob(serialized).await;
-          let msg = CoreMessage::Blob { ticket };
-          debug!("Sending blob");
-          let _res = self.broadcast(msg).await;
-        }
-      }
       CoreMessage::SnapshotResponse {
         state: incoming_state,
         rm_clock: incoming_rm_clock,
@@ -415,7 +399,6 @@ pub enum CoreMessage {
   AntiEntropyResponse {
     ops: Vec<map::Op<String, Grocery, Actor>>,
   },
-  SnapshotRequest,
   SnapshotResponse {
     state: Groceries,
     rm_clock: Clock,
