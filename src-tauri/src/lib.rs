@@ -75,7 +75,7 @@ async fn start_background_tasks(
 fn get_save_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join("todos.json"))
+    Ok(dir.join("groceries.json"))
 }
 
 #[tauri::command]
