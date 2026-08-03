@@ -250,7 +250,7 @@ impl PeerState {
     self.map.get(&key.to_owned()).val
   }
 
-  pub async fn update(&mut self, key: String, value: bool) {
+  pub async fn update_value(&mut self, key: String, value: bool) {
     let ctx = self.map.read_ctx().derive_add_ctx(self.actor);
     let op = self.map.update(key, ctx, |v, ctx| v.write(value, ctx));
 

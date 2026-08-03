@@ -14,9 +14,9 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn update(state: State<'_, AppState>, key: String, value: bool) -> Result<(), ()> {
+async fn update_value(state: State<'_, AppState>, key: String, value: bool) -> Result<(), ()> {
     let mut guard = state.write().await;
-    guard.update(key, value).await;
+    guard.update_value(key, value).await;
 
     Ok(())
 }
@@ -151,7 +151,7 @@ pub async fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             get,
-            update,
+            update_value,
             remove,
             clear,
             to_hashmap,
