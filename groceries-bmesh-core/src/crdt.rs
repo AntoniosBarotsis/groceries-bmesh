@@ -4,7 +4,7 @@ use std::{
   path::PathBuf,
 };
 
-use crdts::{CmRDT, CvRDT, MVReg, Map, VClock, map};
+use crdts::{CmRDT, CvRDT, Dot, MVReg, Map, VClock, map};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use iroh::{Endpoint, PublicKey};
 use iroh_blobs::{BlobsProtocol, api::downloader::Shuffled, ticket::BlobTicket};
@@ -251,9 +251,22 @@ impl PeerState {
   }
 
   pub async fn update_value(&mut self, key: String, value: bool) {
-    let ctx = self.map.read_ctx().derive_add_ctx(self.actor);
-    let op = self.map.update(key, ctx, |v, ctx| v.write(value, ctx));
+    let add_clock = self.map.read_ctx().add_clock.clone();
+    let current_add = add_clock.get(&self.actor);
+    let current_rm = self.rm_clock.get(&self.actor);
 
+    // The new dot must strictly exceed rm_clock so it survives deferred removes
+    let new_counter = std::cmp::max(current_add, current_rm) + 1;
+
+    let mut new_clock = add_clock;
+    new_clock.apply(Dot::new(self.actor, new_counter));
+
+    let ctx = crdts::ctx::AddCtx {
+      clock: new_clock,
+      dot: Dot::new(self.actor, new_counter),
+    };
+
+    let op = self.map.update(key, ctx, |v, ctx| v.write(value, ctx));
     self.apply_local_op(op).await;
   }
 
