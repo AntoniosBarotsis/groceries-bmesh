@@ -1,7 +1,7 @@
 use groceries_bmesh_core::{crdt::PeerState, GossipReceiver};
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 // use tauri_plugin_blew::{are_ble_permissions_granted, request_ble_permissions};
 use tauri::async_runtime::{Mutex, RwLock};
 

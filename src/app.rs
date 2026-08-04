@@ -94,8 +94,6 @@ pub fn App() -> impl IntoView {
     }
 
     spawn_local({
-        let set_groceries = set_groceries.clone();
-        let set_peers_connected = set_peers_connected.clone();
         async move {
             console::log_1(&"Waiting for backend...".into());
             wait_for_backend().await;
