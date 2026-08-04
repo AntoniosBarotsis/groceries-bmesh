@@ -5,5 +5,5 @@
 async fn main() {
     tauri::async_runtime::set(tokio::runtime::Handle::current());
 
-    groceries_bmesh_lib::run().await
+    groceries_bmesh_lib::run()
 }

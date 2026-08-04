@@ -1,11 +1,11 @@
 use groceries_bmesh_core::{crdt::PeerState, GossipReceiver};
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 // use tauri_plugin_blew::{are_ble_permissions_granted, request_ble_permissions};
 use tokio::sync::{Mutex, RwLock};
 
-type AppState = Arc<tokio::sync::RwLock<PeerState>>;
+type AppState = Arc<RwLock<PeerState>>;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -87,7 +87,6 @@ fn get_save_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("groceries.json"))
 }
 
-#[tauri::command]
 async fn check_saved_data(app: AppHandle) -> bool {
     if let Ok(path) = get_save_path(&app) {
         return path.exists();
@@ -119,13 +118,12 @@ async fn load_state(app: AppHandle, peer_state: State<'_, AppState>) -> Result<(
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub async fn run() {
-    // std::env::set_var("RUST_BACKTRACE", "1");
+pub fn run() {
+    std::env::set_var("RUST_BACKTRACE", "1");
     // std::env::set_var("RUST_LOG", "debug"); // still useful
     let id = 2;
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         // .plugin(tauri_plugin_blew::init_with_config(
         //     tauri_plugin_blew::BlewPluginConfig {
         //         auto_request_permissions: false,
@@ -146,14 +144,29 @@ pub async fn run() {
             //     }
             // }
 
-            let (receiver, router, discovery_handle, state) = futures::executor::block_on(async {
-                groceries_bmesh_core::setup(id).await.unwrap()
-            });
+            let (receiver, router, discovery_handle, state) =
+                tauri::async_runtime::block_on(async {
+                    groceries_bmesh_core::setup(id).await.unwrap()
+                });
 
             let state = Arc::new(RwLock::new(state));
             app.manage(state.clone());
             app.manage((router, discovery_handle));
             app.manage(Arc::new(Mutex::new(Some(receiver))));
+
+            // I had an issue where sometimes my state would not be managed yet by the time my frontend
+            // called one of my commands. Which sounds stupid, why does that even happen, what's the point
+            // of a setup function if it is not guaranteed to finish before the frontend runs.
+            //
+            // I tried a few ways of "fixing" that but none worked. Curiously I added a command that
+            // did app.try_state which you'd imagine would work but it would somehow cause a hang.
+            //
+            // I ended up setting a js global variable here which the frontend can busy-wait for and that
+            // solved my issues.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.eval("window.__BACKEND_READY__ = true");
+            }
+            app.emit("backend-ready", ()).ok();
 
             Ok(())
         })
@@ -166,7 +179,8 @@ pub async fn run() {
             to_hashmap,
             start_background_tasks,
             save_state,
-            load_state
+            load_state,
+            get_peers_connected
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
