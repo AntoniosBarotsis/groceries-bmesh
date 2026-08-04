@@ -26,6 +26,5 @@ tauri = { git = "https://github.com/tauri-apps/tauri/", features = [] }
 # tauri-runtime = { version = "=2.11.3", features = [] }
 
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls", "rustls-no-provider"] }
-tokio = { version = "1.53.1", default-features = false, features = ["sync", "macros", "rt", "time"] }
 groceries-bmesh-core = { path="../groceries-bmesh-core" }
 # tauri-plugin-blew = "0.3.1"

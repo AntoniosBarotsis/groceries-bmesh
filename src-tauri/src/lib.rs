@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 use tauri::{AppHandle, Emitter, Manager, State};
 // use tauri_plugin_blew::{are_ble_permissions_granted, request_ble_permissions};
-use tokio::sync::{Mutex, RwLock};
+use tauri::async_runtime::{Mutex, RwLock};
 
 type AppState = Arc<RwLock<PeerState>>;
 
