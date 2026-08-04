@@ -166,7 +166,6 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.eval("window.__BACKEND_READY__ = true");
             }
-            app.emit("backend-ready", ()).ok();
 
             Ok(())
         })
