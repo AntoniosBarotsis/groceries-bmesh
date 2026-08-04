@@ -9,10 +9,10 @@ use std::{
 };
 
 use flate2::read::GzDecoder;
+pub use iroh::protocol::Router;
 use iroh::{
   Endpoint, SecretKey,
   endpoint::{IdleTimeout, QuicTransportConfig, presets},
-  protocol::Router,
 };
 use iroh_blobs::{BlobsProtocol, store::mem::MemStore};
 // use iroh_ble_transport::{BleTransport, Central, CentralConfig, Peripheral};
