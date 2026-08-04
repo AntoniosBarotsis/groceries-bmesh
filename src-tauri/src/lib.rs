@@ -1,4 +1,4 @@
-use groceries_bmesh_core::{crdt::PeerState, GossipReceiver};
+use groceries_bmesh_core::{crdt::PeerState, GossipReceiver, Router, TopicDiscoveryHandle};
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 use tauri::{AppHandle, Manager, State};
@@ -168,6 +168,19 @@ pub fn run() {
             }
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                if let Some(state) = window
+                    .app_handle()
+                    .try_state::<(Router, TopicDiscoveryHandle)>()
+                {
+                    let (router, _) = state.inner();
+                    tauri::async_runtime::block_on(async {
+                        let _tmp = router.shutdown().await;
+                    });
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             greet,
