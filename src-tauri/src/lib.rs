@@ -23,7 +23,7 @@ async fn update_value(state: State<'_, AppState>, key: String, value: bool) -> R
 
 #[tauri::command]
 async fn get(state: State<'_, AppState>, key: String) -> Result<(), ()> {
-    let mut guard = state.read().await;
+    let guard = state.read().await;
     guard.get(&key);
 
     Ok(())
@@ -47,7 +47,7 @@ async fn clear(state: State<'_, AppState>) -> Result<(), ()> {
 
 #[tauri::command]
 async fn to_hashmap(state: State<'_, AppState>) -> Result<HashMap<String, String>, ()> {
-    let mut guard = state.read().await;
+    let guard = state.read().await;
     let res = guard.to_hashmap();
 
     Ok(res)
