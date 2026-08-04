@@ -15,7 +15,6 @@ extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
     async fn invoke(cmd: &str, args: JsValue) -> JsValue;
 
-    // NEW: bind to Tauri's event listener
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "event"])]
     fn listen(event: &str, handler: &Function) -> js_sys::Promise;
 }
