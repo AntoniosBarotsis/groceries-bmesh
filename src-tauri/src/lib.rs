@@ -40,7 +40,7 @@ async fn remove(state: State<'_, AppState>, key: String) -> Result<(), ()> {
 #[tauri::command]
 async fn clear(state: State<'_, AppState>) -> Result<(), ()> {
     let mut guard = state.write().await;
-    guard.clear();
+    guard.clear().await;
 
     Ok(())
 }

@@ -272,10 +272,11 @@ impl PeerState {
     self.apply_local_op(op).await;
   }
 
-  pub fn clear(&mut self) {
-    self.map = Groceries::new();
-    self.log.clear();
-    self.rm_clock = VClock::new();
+  pub async fn clear(&mut self) {
+    let keys: Vec<_> = self.map.keys().map(|ctx| ctx.val.to_owned()).collect();
+    for ctx in keys {
+      self.remove(ctx).await;
+    }
   }
 
   pub async fn remove(&mut self, key: String) {
