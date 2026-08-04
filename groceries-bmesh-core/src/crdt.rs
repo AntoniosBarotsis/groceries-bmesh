@@ -104,7 +104,6 @@ impl PeerState {
     }
   }
 
-  // FIXME: Apparently this can fail after I ctrl-c because the receiver gets deallocated. Not sure I care though.
   async fn broadcast(&self, msg: CoreMessage) -> Result<(), Vec<u8>> {
     let compressed_bytes = Self::serialize_compress_msg(msg);
 
@@ -118,6 +117,7 @@ impl PeerState {
       return Err(compressed_bytes);
     }
 
+    // FIXME: Apparently this can fail after I ctrl-c because the receiver gets deallocated. Not sure I care though.
     self
       .sender
       .broadcast(compressed_bytes.into())
