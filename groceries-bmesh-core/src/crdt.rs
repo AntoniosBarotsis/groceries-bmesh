@@ -16,8 +16,8 @@ pub type Actor = PublicKey;
 pub type Grocery = MVReg<bool, Actor>;
 pub type Groceries = Map<String, Grocery, Actor>;
 pub type Clock = VClock<Actor>;
-// const MAX_MESSAGE_SIZE: usize = iroh_gossip::proto::DEFAULT_MAX_MESSAGE_SIZE;
-const MAX_MESSAGE_SIZE: usize = 200;
+const MAX_MESSAGE_SIZE: usize = iroh_gossip::proto::DEFAULT_MAX_MESSAGE_SIZE;
+// const MAX_MESSAGE_SIZE: usize = 200;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpLog {
