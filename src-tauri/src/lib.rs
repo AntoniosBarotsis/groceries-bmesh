@@ -54,6 +54,15 @@ async fn to_hashmap(state: State<'_, AppState>) -> Result<HashMap<String, String
 }
 
 #[tauri::command]
+async fn get_peers_connected(app: AppHandle) -> Result<usize, String> {
+    let Some(peer_state) = app.try_state::<AppState>() else {
+        return Err("Backend not ready".into());
+    };
+    let guard = peer_state.read().await;
+    Ok(guard.peers_connected)
+}
+
+#[tauri::command]
 async fn start_background_tasks(
     state: State<'_, AppState>,
     pending: State<'_, Arc<Mutex<Option<GossipReceiver>>>>,

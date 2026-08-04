@@ -41,6 +41,7 @@ pub struct PeerState {
   pub blobs: BlobsProtocol,
   pub endpoint: Endpoint,
   pub rm_clock: Clock,
+  pub peers_connected: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -68,6 +69,7 @@ impl PeerState {
       blobs,
       endpoint,
       rm_clock: VClock::new(),
+      peers_connected: 0,
     }
   }
 

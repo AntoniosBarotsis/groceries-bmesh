@@ -66,9 +66,11 @@ pub fn start_respond_loop(
     while let Some(event) = receiver.next().await {
       debug!("RECEIVED {:?}", &event);
       if let Ok(Event::NeighborUp(_key)) = event {
+        state.write().await.peers_connected += 1;
         info!("New neighbor");
       }
       if let Ok(Event::NeighborDown(_key)) = event {
+        state.write().await.peers_connected -= 1;
         info!("Neighbor down");
       }
       if let Ok(Event::Received(msg)) = event {
